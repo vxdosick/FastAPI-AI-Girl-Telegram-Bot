@@ -123,40 +123,62 @@ async def stripe_webhook(request: Request):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
+        session_meta = session.get("metadata") or {}
 
         payment_intent_id = session.get("payment_intent")
+        if isinstance(payment_intent_id, dict):
+            payment_intent_id = payment_intent_id.get("id")
         if not payment_intent_id:
             print("STRIPE WEBHOOK ERROR: NO PAYMENT INTENT")
             return {"status": "ok"}
 
+        pi_meta: dict = {}
         try:
             pi = await asyncio.to_thread(_retrieve_payment_intent, payment_intent_id)
+            pi_meta = pi.get("metadata") or {}
         except Exception as e:
             print("STRIPE PAYMENT INTENT ERROR:", e)
-            raise HTTPException(status_code=502)
+            # Fall back to checkout session metadata (same as working bot flow)
+            pi_meta = {}
 
-        metadata = pi.get("metadata", {})
+        def _meta(key: str) -> str | None:
+            val = pi_meta.get(key) or session_meta.get(key)
+            return str(val).strip() if val is not None and str(val).strip() else None
 
-        bot_name = metadata.get("bot_name")
-        if bot_name != STRIPE_BOT_NAME:
+        bot_name = _meta("bot_name")
+        if bot_name and bot_name != STRIPE_BOT_NAME:
             print("STRIPE WEBHOOK: SKIP OTHER BOT:", bot_name)
             return {"status": "ok"}
 
-        telegram_user_id = metadata.get("telegram_user_id")
+        telegram_user_id = _meta("telegram_user_id")
         try:
-            credits = int(metadata.get("credits", 0))
+            credits = int(_meta("credits") or 0)
         except (TypeError, ValueError):
             credits = 0
 
-        print("STRIPE WEBHOOK: PAYMENT OK:", telegram_user_id, credits)
+        print(
+            "STRIPE WEBHOOK: PAYMENT OK:",
+            telegram_user_id,
+            credits,
+            "session_meta=",
+            session_meta,
+            "pi_meta=",
+            pi_meta,
+        )
 
         if not telegram_user_id or credits <= 0:
             print("STRIPE WEBHOOK ERROR: INVALID METADATA")
             return {"status": "ok"}
 
-        added = await stripe_credit_topup(payment_intent_id, telegram_user_id, credits)
+        added = await stripe_credit_topup(
+            str(payment_intent_id),
+            str(telegram_user_id),
+            credits,
+        )
         if not added:
             print("STRIPE WEBHOOK: PAYMENT ALREADY PROCESSED:", payment_intent_id)
+        else:
+            print("STRIPE WEBHOOK: CREDITS ADDED:", telegram_user_id, credits)
 
     return {"status": "ok"}
 
