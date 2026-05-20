@@ -1,0 +1,259 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap");
+
+* {
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+*,
+*:before,
+*:after {
+  -moz-box-sizing: border-box;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+:focus,
+:active {
+  outline: none;
+}
+a:focus,
+a:active {
+  outline: none;
+}
+
+nav,
+footer,
+header,
+aside {
+  display: block;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  font-style: 100%;
+  line-height: 1;
+  font-style: 14px;
+  -ms-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+  font-family: "Space Mono", ui-monospace, monospace;
+  font-size: 15px;
+  line-height: 1.45;
+  background: #eeeeee;
+  color: #000000;
+}
+
+input,
+button,
+textarea {
+  font-family: inherit;
+}
+
+input::-ms-clear {
+  display: none;
+}
+button {
+  cursor: pointer;
+}
+button::-moz-focus-inner {
+  padding: 0;
+  border: 0;
+}
+a {
+  color: black;
+}
+a,
+a:visited {
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: none;
+}
+ul li {
+  list-style-type: none;
+}
+img {
+  vertical-align: top;
+}
+html {
+  scroll-behavior: smooth;
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-style: inherit;
+  font-weight: 600;
+}
+/*---------------------*/
+[class$="__container"] {
+  max-width: 975px;
+  margin: 0 auto;
+  padding-left: 15px;
+  padding-right: 15px;
+}
+.policy-section__title {
+  text-align: center;
+  margin-bottom: 12px;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+.policy-section__subtitle {
+  margin-bottom: 18px !important;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.policy-article__header {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #c8c8c8;
+}
+.policy-block + .policy-block {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #d8d8d8;
+}
+.policy-block:first-of-type {
+  padding-top: 0;
+}
+p {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+p:last-child {
+  margin-bottom: 0;
+}
+.policy-block h2 {
+  margin-top: 0;
+}
+h2 {
+  font-size: 0.95rem;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding-left: 2px;
+}
+.list li {
+  font-size: 0.875rem;
+  line-height: 1.42;
+}
+.list li::before {
+  content: "•";
+  margin-right: 8px;
+}
+/*---------------------*/
+.header__menu ul {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: 0.875rem;
+}
+.header__container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header__logo {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.header {
+  padding: 14px 0;
+  border-bottom: 1px solid #5d5d5d;
+  margin-bottom: 22px;
+}
+.footer {
+  border-top: 1px solid #5d5d5d;
+  padding: 16px 0 22px;
+  margin-top: 28px;
+}
+.footer__container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  text-align: center;
+}
+.footer__logo {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.footer__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 42rem;
+}
+.footer__copyright,
+.footer__updated,
+.footer__disclaimer {
+  margin-bottom: 0;
+  font-size: 0.78rem;
+  line-height: 1.42;
+  color: #000000;
+}
+.footer__disclaimer {
+  opacity: 0.92;
+}
+.policy-section {
+  margin-bottom: 22px;
+}
+.policy-section--last {
+  margin-bottom: 0;
+}
+.main {
+  padding-bottom: 4px;
+}
+/*---------------------*/
+@media (max-width: 650px) {
+  .header__container {
+    flex-direction: column;
+  }
+}
+@media (max-width: 600px) {
+  .footer__container {
+    flex-direction: column;
+  }
+  .header__menu {
+    margin-top: 10px;
+  }
+}
+@media (max-width: 500px) {
+  .policy-section__title {
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 1.2rem;
+  }
+  p {
+    font-size: 0.84rem;
+    line-height: 1.42;
+    margin-bottom: 8px;
+  }
+  h2 {
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+  }
+  .list {
+    gap: 5px;
+    margin-bottom: 8px;
+  }
+  .list li {
+    font-size: 0.84rem;
+  }
+}
+@media (max-width: 360px) {
+  .header__menu ul {
+    gap: 10px;
+  }
+}

@@ -1,0 +1,40 @@
+# SQLite database (if SQLite is used)
+/database/storage/data.db
+
+# Python virtual environment and environment variables
+venv/
+.venv/
+.env/
+.env.*
+.env
+
+# Python cache
+.pytest_cache/
+tmp_pycache/
+.tmp_pycache/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+Thumbs.db
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# Python packages
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/

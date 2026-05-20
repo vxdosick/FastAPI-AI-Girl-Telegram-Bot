@@ -1,0 +1,22 @@
+She Wants You — Repository Use Terms
+Copyright (c) 2026. All rights reserved.
+
+This source code is published for viewing, study, and reference only — to
+illustrate how a Telegram companion bot may be built (memory, credits,
+webhooks, async stack). It is not a product license to operate, sell, or
+host a live service for end users.
+
+You may read, fork, or clone this repository. The Author does not forbid
+that. If you run, modify, or redistribute any derivative, you do so entirely
+at your own risk and expense.
+
+The Author is responsible only for the official live bot linked in README.md
+(the supported version). The Author does not provide support, warranties, or
+maintenance for copies, forks, or third-party deployments of this code.
+
+To the fullest extent permitted by law, the Author disclaims all liability
+for any use of this repository or derived code by others, including but not
+limited to: bugs, data loss, privacy issues, payment failures, account bans,
+regulatory compliance, or any direct or indirect damages.
+
+For the supported experience, use the official bot link in README.md.
