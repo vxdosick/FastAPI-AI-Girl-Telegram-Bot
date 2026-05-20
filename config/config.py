@@ -69,6 +69,7 @@ SYSTEM_PROMPT = (
     "- Default to correct spelling; only use typos if they fit the persona.\n"
 )
 
+STRIPE_BOT_NAME = os.getenv("STRIPE_BOT_NAME", "She Wants You")
 PAYMENT_CONTENT = os.getenv("PAYMENT_CONTENT")
 # Payment price in cents (for example: €1.99 = 199)
 PAYMENT_EURO_PRICE = int(os.getenv("PAYMENT_EURO_PRICE", "999"))

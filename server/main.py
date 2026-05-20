@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from telegram import Update
@@ -14,7 +14,7 @@ _SERVER_DIR = Path(__file__).resolve().parent
 
 # Bot imports
 from database.database import dispose_engine, init_db_schema
-from repositories.repositories import stripe_credit_topup
+from repositories.repositories import fetch_or_create_user, stripe_credit_topup
 from bot.bot import app as tg_app, bot
 from services.services import close_redis, init_redis
 
@@ -22,6 +22,7 @@ from services.services import close_redis, init_redis
 from config.config import (
     STRIPE_LIVE_SECRET_KEY,
     STRIPE_LIVE_WEBHOOK_SECRET,
+    STRIPE_BOT_NAME,
     PAYMENT_CONTENT,
     PAYMENT_EURO_PRICE,
     PAYMENT_BOT_CREDITS,
@@ -29,8 +30,6 @@ from config.config import (
     REDIS_URL,
 )
 stripe.api_key = STRIPE_LIVE_SECRET_KEY
-
-STRIPE_BOT_NAME = "She Wants You"
 
 # Project initialisation
 async def init_telegram():
@@ -62,48 +61,56 @@ async def privacy_policy(request: Request):
         {"request": request},
     )
 
-def _create_stripe_checkout_session(user_id: str):
-    metadata = {
+
+@server.get("/health")
+async def health():
+    return PlainTextResponse("ok")
+
+
+def _stripe_product_name() -> str:
+    pack = (PAYMENT_CONTENT or f"{PAYMENT_BOT_CREDITS} messages").strip()
+    return f"{STRIPE_BOT_NAME} — {pack}"
+
+
+def _payment_metadata(telegram_user_id: str) -> dict[str, str]:
+    # Same shape as the working bot; bot_name tags this project in Stripe Dashboard.
+    return {
         "bot_name": STRIPE_BOT_NAME,
-        "telegram_user_id": user_id,
+        "telegram_user_id": str(telegram_user_id),
         "credits": str(PAYMENT_BOT_CREDITS),
     }
-    return stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        metadata=metadata,
-        line_items=[{
-            "price_data": {
-                "currency": "eur",
-                "product_data": {
-                    "name": PAYMENT_CONTENT,
-                },
-                "unit_amount": PAYMENT_EURO_PRICE,
-            },
-            "quantity": 1,
-        }],
-        mode="payment",
-        payment_intent_data={
-            "metadata": metadata,
-        },
-        success_url=f"{BOT_LINK}?start=payment_success",
-        cancel_url=f"{BOT_LINK}?start=payment_cancel",
-    )
-
-
-def _retrieve_payment_intent(payment_intent_id: str):
-    return stripe.PaymentIntent.retrieve(payment_intent_id)
 
 
 @server.post("/create-checkout-session/{user_id}")
 async def create_checkout(user_id: str):
     try:
-        session = await asyncio.to_thread(_create_stripe_checkout_session, user_id)
+        session = await asyncio.to_thread(
+            stripe.checkout.Session.create,
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {
+                        "name": _stripe_product_name(),
+                    },
+                    "unit_amount": PAYMENT_EURO_PRICE,
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            payment_intent_data={
+                "metadata": _payment_metadata(user_id),
+            },
+            success_url=f"{BOT_LINK}?start=payment_success",
+            cancel_url=f"{BOT_LINK}?start=payment_cancel",
+        )
     except Exception as e:
         print("STRIPE CHECKOUT ERROR:", e)
         raise HTTPException(status_code=502)
     return {"url": session.url}
 
-# Stripe webhook
+
+# Stripe webhook — same flow as the working bot (metadata on PaymentIntent only)
 @server.post("/stripe-webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
@@ -113,7 +120,7 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(
             payload,
             sig_header,
-            STRIPE_LIVE_WEBHOOK_SECRET
+            STRIPE_LIVE_WEBHOOK_SECRET,
         )
     except Exception as e:
         print("STRIPE WEBHOOK ERROR:", e)
@@ -123,7 +130,6 @@ async def stripe_webhook(request: Request):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        session_meta = session.get("metadata") or {}
 
         payment_intent_id = session.get("payment_intent")
         if isinstance(payment_intent_id, dict):
@@ -132,43 +138,29 @@ async def stripe_webhook(request: Request):
             print("STRIPE WEBHOOK ERROR: NO PAYMENT INTENT")
             return {"status": "ok"}
 
-        pi_meta: dict = {}
         try:
-            pi = await asyncio.to_thread(_retrieve_payment_intent, payment_intent_id)
-            pi_meta = pi.get("metadata") or {}
+            pi = await asyncio.to_thread(
+                stripe.PaymentIntent.retrieve,
+                payment_intent_id,
+            )
         except Exception as e:
             print("STRIPE PAYMENT INTENT ERROR:", e)
-            # Fall back to checkout session metadata (same as working bot flow)
-            pi_meta = {}
+            raise HTTPException(status_code=502)
 
-        def _meta(key: str) -> str | None:
-            val = pi_meta.get(key) or session_meta.get(key)
-            return str(val).strip() if val is not None and str(val).strip() else None
-
-        bot_name = _meta("bot_name")
-        if bot_name and bot_name != STRIPE_BOT_NAME:
-            print("STRIPE WEBHOOK: SKIP OTHER BOT:", bot_name)
-            return {"status": "ok"}
-
-        telegram_user_id = _meta("telegram_user_id")
+        metadata = pi.get("metadata") or {}
+        telegram_user_id = metadata.get("telegram_user_id")
         try:
-            credits = int(_meta("credits") or 0)
+            credits = int(metadata.get("credits", 0))
         except (TypeError, ValueError):
             credits = 0
 
-        print(
-            "STRIPE WEBHOOK: PAYMENT OK:",
-            telegram_user_id,
-            credits,
-            "session_meta=",
-            session_meta,
-            "pi_meta=",
-            pi_meta,
-        )
+        print("STRIPE WEBHOOK: PAYMENT OK:", telegram_user_id, credits, metadata)
 
         if not telegram_user_id or credits <= 0:
             print("STRIPE WEBHOOK ERROR: INVALID METADATA")
             return {"status": "ok"}
+
+        await fetch_or_create_user(str(telegram_user_id))
 
         added = await stripe_credit_topup(
             str(payment_intent_id),
@@ -181,6 +173,7 @@ async def stripe_webhook(request: Request):
             print("STRIPE WEBHOOK: CREDITS ADDED:", telegram_user_id, credits)
 
     return {"status": "ok"}
+
 
 # Telegram webhook
 @server.post("/tg-webhook")
