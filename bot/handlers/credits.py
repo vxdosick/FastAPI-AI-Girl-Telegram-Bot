@@ -1,7 +1,6 @@
 # Imports
 import logging
 
-import httpx
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -10,9 +9,9 @@ from config.config import (
     PAYMENT_BOT_CREDITS,
     PAYMENT_CONTENT,
     PAYMENT_EURO_PRICE,
-    SERVER_URL,
 )
 from repositories.repositories import fetch_or_create_user
+from services.payments import create_stripe_checkout_session
 
 log = logging.getLogger(__name__)
 
@@ -35,11 +34,8 @@ async def credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     free_images = max(0, DEFAULT_START_IMAGE_CREDITS)
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post(f"{SERVER_URL}/create-checkout-session/{user_id}")
-            r.raise_for_status()
-            data = r.json()
-        checkout_url = data["url"]
+        session = await create_stripe_checkout_session(user_id)
+        checkout_url = session.url
     except Exception:
         log.exception("Checkout session failed for user_id=%s", user_id)
         await update.message.reply_text(CREDITS_BUSY_REPLY)

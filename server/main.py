@@ -16,6 +16,7 @@ _SERVER_DIR = Path(__file__).resolve().parent
 from database.database import dispose_engine, init_db_schema
 from repositories.repositories import fetch_or_create_user, stripe_credit_topup
 from bot.bot import app as tg_app, bot
+from services.payments import create_stripe_checkout_session
 from services.services import close_redis, init_redis
 
 # Define tokens
@@ -23,10 +24,6 @@ from config.config import (
     STRIPE_LIVE_SECRET_KEY,
     STRIPE_LIVE_WEBHOOK_SECRET,
     STRIPE_BOT_NAME,
-    PAYMENT_CONTENT,
-    PAYMENT_EURO_PRICE,
-    PAYMENT_BOT_CREDITS,
-    BOT_LINK,
     REDIS_URL,
 )
 stripe.api_key = STRIPE_LIVE_SECRET_KEY
@@ -66,51 +63,14 @@ async def privacy_policy(request: Request):
 async def health():
     return PlainTextResponse("ok")
 
-
-def _stripe_product_name() -> str:
-    pack = (PAYMENT_CONTENT or f"{PAYMENT_BOT_CREDITS} messages").strip()
-    return f"{STRIPE_BOT_NAME} — {pack}"
-
-
-def _payment_metadata(telegram_user_id: str) -> dict[str, str]:
-    # Same shape as the working bot; bot_name tags this project in Stripe Dashboard.
-    return {
-        "bot_name": STRIPE_BOT_NAME,
-        "telegram_user_id": str(telegram_user_id),
-        "credits": str(PAYMENT_BOT_CREDITS),
-    }
-
-
 @server.post("/create-checkout-session/{user_id}")
 async def create_checkout(user_id: str):
-    metadata = _payment_metadata(user_id)
     try:
-        session = await asyncio.to_thread(
-            stripe.checkout.Session.create,
-            payment_method_types=["card"],
-            metadata=metadata,
-            client_reference_id=str(user_id),
-            line_items=[{
-                "price_data": {
-                    "currency": "eur",
-                    "product_data": {
-                        "name": _stripe_product_name(),
-                    },
-                    "unit_amount": PAYMENT_EURO_PRICE,
-                },
-                "quantity": 1,
-            }],
-            mode="payment",
-            payment_intent_data={
-                "metadata": metadata,
-            },
-            success_url=f"{BOT_LINK}?start=payment_success",
-            cancel_url=f"{BOT_LINK}?start=payment_cancel",
-        )
+        session = await create_stripe_checkout_session(user_id)
     except Exception as e:
         print("STRIPE CHECKOUT ERROR:", e)
         raise HTTPException(status_code=502)
-    print("STRIPE CHECKOUT CREATED:", session.id, metadata)
+    print("STRIPE CHECKOUT CREATED:", session.id)
     return {"url": session.url}
 
 
