@@ -165,8 +165,14 @@ async def stripe_webhook(request: Request):
         )
 
         bot_name = metadata.get("bot_name")
-        if bot_name and bot_name != STRIPE_BOT_NAME:
-            print("STRIPE WEBHOOK WARNING: UNEXPECTED BOT NAME:", bot_name)
+        if bot_name != STRIPE_BOT_NAME:
+            print(
+                "STRIPE WEBHOOK: SKIP PAYMENT FOR ANOTHER BOT:",
+                bot_name,
+                "expected=",
+                STRIPE_BOT_NAME,
+            )
+            return {"status": "ok"}
 
         telegram_user_id = metadata.get("telegram_user_id")
         try:
