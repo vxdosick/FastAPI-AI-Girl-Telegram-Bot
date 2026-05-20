@@ -83,10 +83,13 @@ def _payment_metadata(telegram_user_id: str) -> dict[str, str]:
 
 @server.post("/create-checkout-session/{user_id}")
 async def create_checkout(user_id: str):
+    metadata = _payment_metadata(user_id)
     try:
         session = await asyncio.to_thread(
             stripe.checkout.Session.create,
             payment_method_types=["card"],
+            metadata=metadata,
+            client_reference_id=str(user_id),
             line_items=[{
                 "price_data": {
                     "currency": "eur",
@@ -99,7 +102,7 @@ async def create_checkout(user_id: str):
             }],
             mode="payment",
             payment_intent_data={
-                "metadata": _payment_metadata(user_id),
+                "metadata": metadata,
             },
             success_url=f"{BOT_LINK}?start=payment_success",
             cancel_url=f"{BOT_LINK}?start=payment_cancel",
@@ -107,6 +110,7 @@ async def create_checkout(user_id: str):
     except Exception as e:
         print("STRIPE CHECKOUT ERROR:", e)
         raise HTTPException(status_code=502)
+    print("STRIPE CHECKOUT CREATED:", session.id, metadata)
     return {"url": session.url}
 
 
@@ -130,6 +134,7 @@ async def stripe_webhook(request: Request):
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
+        session_metadata = session.get("metadata") or {}
 
         payment_intent_id = session.get("payment_intent")
         if isinstance(payment_intent_id, dict):
@@ -147,7 +152,22 @@ async def stripe_webhook(request: Request):
             print("STRIPE PAYMENT INTENT ERROR:", e)
             raise HTTPException(status_code=502)
 
-        metadata = pi.get("metadata") or {}
+        payment_metadata = pi.get("metadata") or {}
+        metadata = {**session_metadata, **payment_metadata}
+        print(
+            "STRIPE WEBHOOK METADATA:",
+            "session=",
+            session_metadata,
+            "payment_intent=",
+            payment_metadata,
+            "merged=",
+            metadata,
+        )
+
+        bot_name = metadata.get("bot_name")
+        if bot_name and bot_name != STRIPE_BOT_NAME:
+            print("STRIPE WEBHOOK WARNING: UNEXPECTED BOT NAME:", bot_name)
+
         telegram_user_id = metadata.get("telegram_user_id")
         try:
             credits = int(metadata.get("credits", 0))
