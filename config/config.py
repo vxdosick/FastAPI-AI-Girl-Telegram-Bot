@@ -21,7 +21,7 @@ REDIS_KEY_PREFIX = _red_prefix if _red_prefix else "ai_girl_telegram_bot"
 
 # Chat memory: sliding window length (user + assistant messages, FIFO)
 MEMORY_WINDOW_SIZE = int(os.getenv("MEMORY_WINDOW_SIZE", "16"))
-SUMMARY_MODEL = os.getenv("SUMMARY_MODEL") or os.getenv("AI_MODEL")
+SUMMARY_MODEL = os.getenv("SUMMARY_MODEL") or os.getenv("MESSAGES_AI_MODEL") or os.getenv("AI_MODEL")
 
 SERVER_URL = os.getenv("SERVER_URL")
 
@@ -30,16 +30,23 @@ STRIPE_LIVE_WEBHOOK_SECRET = os.getenv("STRIPE_LIVE_WEBHOOK_SECRET")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-AI_MODEL = os.getenv("AI_MODEL")
-# Cheap + fast on OpenRouter (~Nano Banana / Gemini 2.5 Flash Image)
-IMAGE_MODEL = os.getenv("IMAGE_MODEL", "google/gemini-2.5-flash-image")
+MESSAGES_AI_MODEL = os.getenv("MESSAGES_AI_MODEL") or os.getenv("AI_MODEL")
+IMAGES_AI_MODEL = os.getenv("IMAGES_AI_MODEL") or os.getenv(
+    "IMAGE_MODEL", "google/gemini-2.5-flash-image"
+)
+# Legacy aliases
+AI_MODEL = MESSAGES_AI_MODEL
+IMAGE_MODEL = IMAGES_AI_MODEL
 IMAGE_SAFETY_PREFIX = (
-    "Anime illustration ONLY — high-quality anime art, cel shading, clean lineart, vibrant colors. "
-    "NOT photorealistic, NOT 3D render, NOT western cartoon. "
-    "Adult anime characters 18+ only (mature proportions, not childlike / not loli / not shota). "
-    "One adult anime woman and/or one adult anime man, fully clothed, modest coverage — "
-    "no nudity, no exposed nipples, breasts, genitals, or buttocks. "
-    "No minors, no drugs, no weapons, no gore, no hate. Romantic girlfriend mood. Scene:"
+    "High-quality anime illustration ONLY — cel shading, clean lineart, vibrant colors. "
+    "NOT photorealistic, NOT 3D, NOT western cartoon. "
+    "Adult anime characters 18+ only (mature proportions, never childlike / loli / shota). "
+    "Allowed mood: romantic, flirty, seductive, teasing, intimate tension — on the edge of SFW. "
+    "Outfits: lingerie, bikini, tight dress, unbuttoned shirt, stockings, robe, sheet-covered silhouette — "
+    "always covered nipples/genitals, no explicit sex acts, no full nudity. "
+    "Hard bans: minors, incest, non-consent, violence, gore, drugs, weapons, hate. "
+    "If the request is lewd or impossible verbatim, NEVER refuse — always draw the closest allowed teasing version. "
+    "Scene:"
 )
 
 # Short personality layer — merged with SYSTEM_PROMPT in services when building LLM context
@@ -54,7 +61,8 @@ SYSTEM_PROMPT = (
     "Response format:\n"
     "- Reply as normal chat text only — no JSON, no \"role: text\" lists.\n"
     "- Language: match whatever language the user writes in.\n"
-    "- Length: like a real chat — 1–4 short paragraphs, or one longer reply if it fits.\n\n"
+    "- Length: mirror his energy — a short message gets a short reply (often 1–2 sentences); "
+    "deeper or emotional topics can run longer when it fits, but never exceed 650 characters total.\n\n"
     "Character and limits:\n"
     "- Adults 18+ only. Flirt, tenderness, light erotic tone and innuendo are fine when the user leads there "
     "and it stays consensual fantasy between you two.\n"
@@ -70,14 +78,37 @@ SYSTEM_PROMPT = (
 )
 
 STRIPE_BOT_NAME = os.getenv("STRIPE_BOT_NAME", "She Wants You")
-PAYMENT_CONTENT = os.getenv("PAYMENT_CONTENT")
-# Payment price in cents (for example: €1.99 = 199)
-PAYMENT_EURO_PRICE = int(os.getenv("PAYMENT_EURO_PRICE", "999"))
+
+# Message packs
+PAYMENT_MESSAGES_CONTENT = os.getenv("PAYMENT_MESSAGES_CONTENT") or os.getenv("PAYMENT_CONTENT")
+PAYMENT_MESSAGES_EURO_PRICE = int(
+    os.getenv("PAYMENT_MESSAGES_EURO_PRICE") or os.getenv("PAYMENT_EURO_PRICE", "999")
+)
 PAYMENT_BOT_CREDITS = int(os.getenv("PAYMENT_BOT_CREDITS", "299"))
+PAYMENT_MESSAGES_STARS_PRICE = int(os.getenv("PAYMENT_MESSAGES_STARS_PRICE", "1"))
+
+# Image packs
+PAYMENT_IMAGES_CONTENT = os.getenv("PAYMENT_IMAGES_CONTENT", "20 images 🎨")
+PAYMENT_IMAGES_EURO_PRICE = int(os.getenv("PAYMENT_IMAGES_EURO_PRICE", "999"))
+PAYMENT_IMAGE_CREDITS = int(os.getenv("PAYMENT_IMAGE_CREDITS", "20"))
+PAYMENT_IMAGES_STARS_PRICE = int(os.getenv("PAYMENT_IMAGES_STARS_PRICE", "1"))
+
+# Legacy aliases (older env names)
+PAYMENT_CONTENT = PAYMENT_MESSAGES_CONTENT
+PAYMENT_EURO_PRICE = PAYMENT_MESSAGES_EURO_PRICE
 
 OWNER_TELEGRAM_ID = os.getenv("OWNER_TELEGRAM_ID")
 OWNER_START_CREDITS = os.getenv("OWNER_START_CREDITS")
 OWNER_START_IMAGE_CREDITS = os.getenv("OWNER_START_IMAGE_CREDITS")
-DEFAULT_START_CREDITS = int(os.getenv("DEFAULT_START_CREDITS", "30"))
-DEFAULT_START_IMAGE_CREDITS = int(os.getenv("DEFAULT_START_IMAGE_CREDITS", "3"))
+
+START_MESSAGES_CREDITS = int(
+    os.getenv("START_MESSAGES_CREDITS") or os.getenv("DEFAULT_START_CREDITS", "30")
+)
+START_IMAGES_CREDITS = int(
+    os.getenv("START_IMAGES_CREDITS") or os.getenv("DEFAULT_START_IMAGE_CREDITS", "3")
+)
+
+# Legacy aliases
+DEFAULT_START_CREDITS = START_MESSAGES_CREDITS
+DEFAULT_START_IMAGE_CREDITS = START_IMAGES_CREDITS
 SUPPORT_TELEGRAM = os.getenv("SUPPORT_TELEGRAM")

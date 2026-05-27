@@ -3,15 +3,16 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from repositories.repositories import clear_user_stored_memory
+from services.chat_messages import purge_tracked_chat_messages, track_chat_message
 from services.services import clear_chat_window
 
 CALLBACK_DELETE_YES = "del_info_yes"
 CALLBACK_DELETE_NO = "del_info_no"
 
 CONFIRM_TEXT = (
-    "Are you sure you want to delete all data about you stored in this bot?\n\n"
-    "This will erase your chat memory and conversation summary. "
-    "Your message credits and your anime picture generation credits will stay the same."
+    "Baby... you wanna wipe our whole chat and erase all your history with me? 😔\n\n"
+    "Everything’s gonna disappear — every little thing I’ve told you about myself and all our messages.\n"
+    "But don’t worry, your credits for messages and pictures will stay safe on your balance."
 )
 
 
@@ -19,8 +20,8 @@ async def delete_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("Yes, delete my data", callback_data=CALLBACK_DELETE_YES),
-                InlineKeyboardButton("Cancel", callback_data=CALLBACK_DELETE_NO),
+                InlineKeyboardButton("Yes, delete 💔", callback_data=CALLBACK_DELETE_YES),
+                InlineKeyboardButton("Cancel 🚫", callback_data=CALLBACK_DELETE_NO),
             ]
         ]
     )
@@ -32,17 +33,22 @@ async def delete_info_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
 
     if query.data == CALLBACK_DELETE_NO:
-        await query.edit_message_text("Cancelled. Nothing was deleted.")
+        await query.edit_message_text(
+            "Deletion cancelled, baby 😌\n"
+            "Ready to keep going, pupsy? 🫦"
+            )
         return
 
     if query.data != CALLBACK_DELETE_YES:
         return
 
     user_id = str(query.from_user.id)
+    chat_id = query.message.chat_id
+
     await clear_chat_window(user_id)
     await clear_user_stored_memory(user_id)
 
-    await query.edit_message_text(
-        "Done. All your saved memory in this bot has been cleared — "
-        "your message credits and picture credits are unchanged. We can start fresh anytime 💕"
-    )
+    if query.message:
+        await track_chat_message(user_id, chat_id, query.message.message_id)
+
+    await purge_tracked_chat_messages(context, user_id, chat_id)

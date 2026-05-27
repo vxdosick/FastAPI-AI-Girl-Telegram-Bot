@@ -14,9 +14,9 @@ _SERVER_DIR = Path(__file__).resolve().parent
 
 # Bot imports
 from database.database import dispose_engine, init_db_schema
-from repositories.repositories import fetch_or_create_user, stripe_credit_topup
+from repositories.repositories import fetch_or_create_user, payment_topup
 from bot.bot import app as tg_app, bot
-from services.payments import create_stripe_checkout_session
+from services.payments import ProductKind, create_stripe_checkout_session
 from services.services import close_redis, init_redis
 
 # Define tokens
@@ -64,13 +64,15 @@ async def health():
     return PlainTextResponse("ok")
 
 @server.post("/create-checkout-session/{user_id}")
-async def create_checkout(user_id: str):
+async def create_checkout(user_id: str, product: ProductKind = "messages"):
+    if product not in ("messages", "images"):
+        raise HTTPException(status_code=400, detail="Invalid product")
     try:
-        session = await create_stripe_checkout_session(user_id)
+        session = await create_stripe_checkout_session(user_id, product)
     except Exception as e:
         print("STRIPE CHECKOUT ERROR:", e)
         raise HTTPException(status_code=502)
-    print("STRIPE CHECKOUT CREATED:", session.id)
+    print("STRIPE CHECKOUT CREATED:", session.id, product)
     return {"url": session.url}
 
 
@@ -135,12 +137,21 @@ async def stripe_webhook(request: Request):
             return {"status": "ok"}
 
         telegram_user_id = metadata.get("telegram_user_id")
+        product_type = metadata.get("product_type", "messages")
+        if product_type not in {"messages", "images"}:
+            product_type = "messages"
         try:
             credits = int(metadata.get("credits", 0))
         except (TypeError, ValueError):
             credits = 0
 
-        print("STRIPE WEBHOOK: PAYMENT OK:", telegram_user_id, credits, metadata)
+        print(
+            "STRIPE WEBHOOK: PAYMENT OK:",
+            telegram_user_id,
+            product_type,
+            credits,
+            metadata,
+        )
 
         if not telegram_user_id or credits <= 0:
             print("STRIPE WEBHOOK ERROR: INVALID METADATA")
@@ -148,15 +159,16 @@ async def stripe_webhook(request: Request):
 
         await fetch_or_create_user(str(telegram_user_id))
 
-        added = await stripe_credit_topup(
+        added = await payment_topup(
             str(payment_intent_id),
             str(telegram_user_id),
+            product_type,
             credits,
         )
         if not added:
             print("STRIPE WEBHOOK: PAYMENT ALREADY PROCESSED:", payment_intent_id)
         else:
-            print("STRIPE WEBHOOK: CREDITS ADDED:", telegram_user_id, credits)
+            print("STRIPE WEBHOOK: CREDITS ADDED:", telegram_user_id, product_type, credits)
 
     return {"status": "ok"}
 

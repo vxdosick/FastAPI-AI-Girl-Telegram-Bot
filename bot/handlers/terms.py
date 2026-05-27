@@ -9,7 +9,7 @@ async def terms(update: Update, context: ContextTypes.DEFAULT_TYPE):
     base = (SERVER_URL or "").strip().rstrip("/")
     if not base:
         await update.message.reply_text(
-            "Terms & Privacy aren’t available right now, sweetie — try again later ❤️"
+            "Privacy Policy, Refund Policy & Terms of Use are not available right now, sweetie — try again later ❤️"
         )
         return
 
@@ -17,8 +17,7 @@ async def terms(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         (
             "Here are the rules, baby 😏\n\n"
-            "Privacy Policy, Refund Policy & Terms of Use:\n"
-            f'<a href="{url}">Open policies</a>'
+            f'<a href="{url}">Privacy Policy, Refund Policy & Terms of Use</a>'
         ),
         parse_mode="HTML",
         disable_web_page_preview=False,

@@ -1,16 +1,14 @@
-# Image generation when the user asks for a picture (OpenRouter, anime-only)
+# Image generation for genimg commands (OpenRouter, anime-only)
 from __future__ import annotations
 
 import base64
 import logging
-import re
 from typing import Any
 
 import httpx
-from openai import AsyncOpenAI
 
 from config.config import (
-    IMAGE_MODEL,
+    IMAGES_AI_MODEL,
     IMAGE_SAFETY_PREFIX,
     OPENAI_API_KEY,
     OPENROUTER_BASE_URL,
@@ -18,55 +16,34 @@ from config.config import (
 
 log = logging.getLogger(__name__)
 
-IMAGE_PROMPT_TAG = re.compile(r"^IMAGE_PROMPT:\s*(.+)$", re.MULTILINE | re.IGNORECASE)
+_MODALITY_ATTEMPTS = (["image", "text"], ["image"])
 
-IMAGE_INSTRUCTIONS = (
-    "\n\n---\nAnime image requests (when he asks for a photo, picture, selfie, or drawing):\n"
-    "- Your visible reply stays a normal short girlfriend message in his language.\n"
-    "- If you will send a picture, add ONE final line only, exactly: IMAGE_PROMPT: <single-line English prompt>\n"
-    "- IMAGE_PROMPT must request ANIME ART ONLY (Japanese anime style illustration) — never photorealistic, "
-    "never 3D, never western cartoon.\n"
-    "- Subjects: ONLY an adult anime woman (you) and/or an adult anime man in a romantic/flirty scene. "
-    "No animals alone, landscapes without characters, logos, memes, crowds, children, celebrities by name.\n"
-    "- Clothing (mandatory): fully clothed or tastefully covered — no nudity, no bare breasts/nipples, "
-    "no genitals, no explicit poses. Suggestive-but-SFW outfits only.\n"
-    "- Forbidden: anyone under 18, childlike/loli/shota faces, drugs, weapons, blood, violence, hate, illegal acts.\n"
-    "- If his request breaks rules, refuse sweetly, do NOT output IMAGE_PROMPT, suggest a safe anime alternative "
-    "(e.g. cozy anime selfie in sweater, date-night dress, soft hug illustration).\n"
-)
-
-_IMAGE_KEYWORDS = (
-    "photo", "picture", "pic", "image", "selfie", "draw", "paint", "sketch", "snapshot",
-    "send me a", "show me", "see you", "your face", "what you look",
-    "фото", "картин", "нарисуй", "рисун", "селфи", "покажи", "изображен",
+_IMAGE_DIRECTIVE = (
+    "Generate ONE anime image. Output must include an image — never reply with refusal text only. "
+    "If the scene is very explicit, translate it into the most flirtatious adult anime picture you can "
+    "still render: suggestive pose, bedroom lighting, blushing, tight or revealing-but-covered outfit, "
+    "maximum tease on the SFW boundary — slightly less explicit than requested is OK, empty output is NOT."
 )
 
 
-def user_likely_wants_image(text: str) -> bool:
-    t = (text or "").lower()
-    return any(k in t for k in _IMAGE_KEYWORDS)
-
-
-def fallback_image_prompt_from_user(user_text: str) -> str:
-    snippet = (user_text or "").strip()[:300]
+def _fallback_tease_prompt(user_prompt: str) -> str:
+    snippet = (user_prompt or "").strip()[:220]
     return (
-        f"Anime illustration, romantic adult girlfriend selfie inspired by: {snippet}. "
-        "Adult anime woman, fully clothed, soft lighting, flirty SFW mood."
+        "Adult anime girlfriend, sultry romantic selfie or intimate date-night scene, "
+        "flirty shy-bold expression, warm soft lighting, suggestive mood but fully covered, "
+        "lingerie or tight dress, maximum tease within SFW rules. "
+        f"Inspired by: {snippet}"
     )
 
 
 def wrap_anime_image_prompt(prompt: str) -> str:
-    return f"{IMAGE_SAFETY_PREFIX} {prompt}".strip()
+    user_scene = (prompt or "").strip()
+    return f"{IMAGE_SAFETY_PREFIX} {_IMAGE_DIRECTIVE} User request: {user_scene}".strip()
 
 
-def split_reply_and_image_prompt(reply: str) -> tuple[str, str | None]:
-    text = (reply or "").strip()
-    match = IMAGE_PROMPT_TAG.search(text)
-    if not match:
-        return text, None
-    prompt = match.group(1).strip()
-    visible = IMAGE_PROMPT_TAG.sub("", text).strip()
-    return visible, prompt or None
+def _chat_completions_url() -> str:
+    base = (OPENROUTER_BASE_URL or "https://openrouter.ai/api/v1").rstrip("/")
+    return f"{base}/chat/completions"
 
 
 def _decode_data_url(url: str) -> bytes | None:
@@ -84,30 +61,12 @@ async def _fetch_url_bytes(url: str) -> bytes | None:
         return None
     try:
         async with httpx.AsyncClient(timeout=90.0, follow_redirects=True) as client:
-            r = await client.get(url)
-            r.raise_for_status()
-            return r.content
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.content
     except Exception:
         log.exception("Failed to download image url")
         return None
-
-
-def _url_from_image_obj(img: Any) -> str | None:
-    if isinstance(img, dict):
-        if "url" in img and img["url"]:
-            return str(img["url"])
-        iu = img.get("image_url")
-        if isinstance(iu, dict) and iu.get("url"):
-            return str(iu["url"])
-        if isinstance(iu, str):
-            return iu
-    url = getattr(img, "url", None)
-    if url:
-        return str(url)
-    iu = getattr(img, "image_url", None)
-    if isinstance(iu, dict) and iu.get("url"):
-        return str(iu["url"])
-    return None
 
 
 async def _bytes_from_url(url: str) -> bytes | None:
@@ -116,14 +75,24 @@ async def _bytes_from_url(url: str) -> bytes | None:
     return await _fetch_url_bytes(url)
 
 
-async def extract_image_bytes_from_completion(completion: Any) -> bytes | None:
-    choices = getattr(completion, "choices", None) if completion else None
-    if not choices:
-        return None
-    msg = choices[0].message
+def _url_from_image_obj(img: Any) -> str | None:
+    if isinstance(img, dict):
+        image_url = img.get("image_url")
+        if isinstance(image_url, dict) and image_url.get("url"):
+            return str(image_url["url"])
+        if isinstance(image_url, str):
+            return image_url
+        if img.get("url"):
+            return str(img["url"])
+    image_url = getattr(img, "image_url", None)
+    if isinstance(image_url, dict) and image_url.get("url"):
+        return str(image_url["url"])
+    url = getattr(img, "url", None)
+    return str(url) if url else None
 
-    images = getattr(msg, "images", None) or []
-    for img in images:
+
+async def extract_image_bytes_from_message(message: dict[str, Any]) -> bytes | None:
+    for img in message.get("images") or []:
         url = _url_from_image_obj(img)
         if not url:
             continue
@@ -131,48 +100,111 @@ async def extract_image_bytes_from_completion(completion: Any) -> bytes | None:
         if data:
             return data
 
-    content = getattr(msg, "content", None)
+    content = message.get("content")
     if isinstance(content, list):
         for part in content:
-            if not isinstance(part, dict):
+            if not isinstance(part, dict) or part.get("type") != "image_url":
                 continue
-            if part.get("type") == "image_url":
-                url = (part.get("image_url") or {}).get("url")
-                if url:
-                    data = await _bytes_from_url(url)
-                    if data:
-                        return data
+            url = (part.get("image_url") or {}).get("url")
+            if url:
+                data = await _bytes_from_url(str(url))
+                if data:
+                    return data
     return None
 
 
-async def _generate_via_modalities(client: AsyncOpenAI, model: str, prompt: str) -> bytes | None:
-    resp = await client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        extra_body={
-            "modalities": ["image", "text"],
-            "image_config": {
-                "aspect_ratio": "1:1",
-                "image_size": "1K",
-            },
-        },
-    )
-    return await extract_image_bytes_from_completion(resp)
+def _is_modality_mismatch(status_code: int, body: str) -> bool:
+    if status_code != 404:
+        return False
+    lowered = body.lower()
+    return "modalities" in lowered or "output modalities" in lowered
+
+
+async def _request_openrouter_image(model: str, prompt: str) -> bytes | None:
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    base_payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if "gemini" in model.lower():
+        base_payload["image_config"] = {
+            "aspect_ratio": "1:1",
+            "image_size": "1K",
+        }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        for modalities in _MODALITY_ATTEMPTS:
+            payload = {**base_payload, "modalities": modalities}
+            response = await client.post(
+                _chat_completions_url(),
+                headers=headers,
+                json=payload,
+            )
+            body = response.text
+
+            if _is_modality_mismatch(response.status_code, body):
+                log.info(
+                    "Retrying image generation with modalities=%s for model=%s",
+                    modalities,
+                    model,
+                )
+                continue
+
+            if response.status_code >= 400:
+                log.error(
+                    "OpenRouter image request failed model=%s status=%s body=%s",
+                    model,
+                    response.status_code,
+                    body[:500],
+                )
+                return None
+
+            try:
+                data = response.json()
+            except ValueError:
+                log.exception("OpenRouter returned non-JSON response for model=%s", model)
+                return None
+
+            choices = data.get("choices") or []
+            if not choices:
+                log.warning("OpenRouter image response had no choices for model=%s", model)
+                return None
+
+            message = choices[0].get("message") or {}
+            image_bytes = await extract_image_bytes_from_message(message)
+            if image_bytes:
+                return image_bytes
+
+            log.warning(
+                "OpenRouter image response had no image payload for model=%s modalities=%s",
+                model,
+                modalities,
+            )
+
+    return None
 
 
 async def generate_image(prompt: str) -> bytes | None:
-    model = (IMAGE_MODEL or "").strip()
+    model = (IMAGES_AI_MODEL or "").strip()
     if not model:
-        log.warning("IMAGE_MODEL not set — skipping image generation")
+        log.warning("IMAGES_AI_MODEL not set — skipping image generation")
         return None
 
-    safe_prompt = wrap_anime_image_prompt(prompt)
-    client = AsyncOpenAI(base_url=OPENROUTER_BASE_URL, api_key=OPENAI_API_KEY)
+    prompt_attempts = [
+        wrap_anime_image_prompt(prompt),
+        wrap_anime_image_prompt(_fallback_tease_prompt(prompt)),
+    ]
 
     try:
-        data = await _generate_via_modalities(client, model, safe_prompt)
-        if data:
-            return data
+        for idx, safe_prompt in enumerate(prompt_attempts):
+            data = await _request_openrouter_image(model, safe_prompt)
+            if data:
+                if idx > 0:
+                    log.info("Image generated via tease fallback")
+                return data
     except Exception:
         log.exception("Anime image generation failed for model=%s", model)
 

@@ -8,8 +8,8 @@ from openai import AsyncOpenAI
 from repositories.repositories import fetch_memory_summary, save_memory_summary
 
 from config.config import (
-    AI_MODEL,
     MEMORY_WINDOW_SIZE,
+    MESSAGES_AI_MODEL,
     OPENAI_API_KEY,
     OPENROUTER_BASE_URL,
     REDIS_KEY_PREFIX,
@@ -17,12 +17,20 @@ from config.config import (
     SUMMARY_MODEL,
     SYSTEM_PROMPT,
 )
-from services.image_gen import IMAGE_INSTRUCTIONS, user_likely_wants_image
 from services.llm_utils import extract_assistant_text
 
 log = logging.getLogger(__name__)
 
 _redis: redis.Redis | None = None
+
+GENIMG_INSTRUCTION = (
+    "\n\n---\nPictures and anime art:\n"
+    "- You cannot send images from normal chat.\n"
+    "- If he asks for a photo, picture, drawing, selfie, or image generation WITHOUT starting "
+    "his message with genimg, reply with exactly this line and nothing else: warning: need genimg\n"
+    "- Do not explain genimg in your own words when he asks for a picture — use that exact line only.\n"
+    "- Do not pretend you attached an image in text-only replies.\n"
+)
 
 SUMMARY_SYSTEM = (
     "You maintain one evolving summary of a user's romantic chat with a virtual girlfriend (18+).\n"
@@ -116,7 +124,7 @@ async def roll_long_term_memory(telegram_id: str) -> None:
     old = await fetch_memory_summary(telegram_id)
     transcript = "\n".join(f"{t['role']}: {t['content']}" for t in turns)
     client = AsyncOpenAI(base_url=OPENROUTER_BASE_URL, api_key=OPENAI_API_KEY)
-    model = SUMMARY_MODEL or AI_MODEL
+    model = SUMMARY_MODEL or MESSAGES_AI_MODEL
     try:
         resp = await client.chat.completions.create(
             model=model,
@@ -154,11 +162,7 @@ def build_llm_messages(
     if short_term:
         lines = [f"{m['role']}: {m['content']}" for m in short_term]
         blocks.append("\n\n### Recent conversation (from oldest to newest)\n" + "\n".join(lines))
-    blocks.append(IMAGE_INSTRUCTIONS)
-    if user_likely_wants_image(user_input):
-        blocks.append(
-            "\n\n(He is asking for a visual — if it is safe, include IMAGE_PROMPT as described above.)"
-        )
+    blocks.append(GENIMG_INSTRUCTION)
     blocks.append(
         "\n\n### Current user message\n"
         "Reply only as the girlfriend's chat message — no role labels (e.g. Girlfriend:, Assistant:)."

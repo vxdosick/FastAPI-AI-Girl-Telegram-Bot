@@ -8,11 +8,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.config import (
-    DEFAULT_START_CREDITS,
-    DEFAULT_START_IMAGE_CREDITS,
     OWNER_START_CREDITS,
     OWNER_START_IMAGE_CREDITS,
     OWNER_TELEGRAM_ID,
+    START_IMAGES_CREDITS,
+    START_MESSAGES_CREDITS,
 )
 from database.database import async_session_maker
 from database.models import ProcessedPayment, User
@@ -43,23 +43,25 @@ def _owner_credits_int() -> int:
 
 def _owner_image_credits_int() -> int:
     if OWNER_START_IMAGE_CREDITS is None or str(OWNER_START_IMAGE_CREDITS).strip() == "":
-        return 10_000
+        return 500
     try:
         return int(OWNER_START_IMAGE_CREDITS)
     except (TypeError, ValueError):
-        return 10_000
+        return 500
 
 
 def _default_message_credits() -> int:
     try:
-        return max(0, int(DEFAULT_START_CREDITS))
+        return max(0, int(START_MESSAGES_CREDITS))
     except (TypeError, ValueError):
         return 30
 
 
 def _default_image_credits() -> int:
-    n = DEFAULT_START_IMAGE_CREDITS
-    return max(0, int(n)) if n is not None else 3
+    try:
+        return max(0, int(START_IMAGES_CREDITS))
+    except (TypeError, ValueError):
+        return 3
 
 
 def _user_to_dto(user: User) -> UserDTO:
@@ -171,16 +173,24 @@ async def deduct_one_image_credit(telegram_id: str) -> bool:
         return ok
 
 
-# Add Stripe credits once. Returns False if this payment was already processed.
-async def stripe_credit_topup(payment_intent_id: str, telegram_user_id: str, credits: int) -> bool:
+# Add payment credits once. Returns False if this payment was already processed.
+async def payment_topup(
+    payment_id: str,
+    telegram_user_id: str,
+    product_type: str,
+    amount: int,
+) -> bool:
+    if amount <= 0:
+        return False
+
     async with async_session_maker() as session:
         async with session.begin():
             payment_stmt = (
                 pg_insert(ProcessedPayment)
                 .values(
-                    payment_intent_id=payment_intent_id,
+                    payment_intent_id=payment_id,
                     telegram_id=telegram_user_id,
-                    credits=credits,
+                    credits=amount,
                 )
                 .on_conflict_do_nothing(index_elements=[ProcessedPayment.payment_intent_id])
                 .returning(ProcessedPayment.payment_intent_id)
@@ -211,9 +221,25 @@ async def stripe_credit_topup(payment_intent_id: str, telegram_user_id: str, cre
             )
             await session.execute(user_stmt)
 
-            await session.execute(
-                update(User)
-                .where(User.telegram_id == telegram_user_id)
-                .values(credits=User.credits + credits)
-            )
+            if product_type == "images":
+                await session.execute(
+                    update(User)
+                    .where(User.telegram_id == telegram_user_id)
+                    .values(image_generating=User.image_generating + amount)
+                )
+            else:
+                await session.execute(
+                    update(User)
+                    .where(User.telegram_id == telegram_user_id)
+                    .values(credits=User.credits + amount)
+                )
             return True
+
+
+async def stripe_credit_topup(payment_intent_id: str, telegram_user_id: str, credits: int) -> bool:
+    return await payment_topup(
+        payment_intent_id,
+        telegram_user_id,
+        "messages",
+        credits,
+    )
